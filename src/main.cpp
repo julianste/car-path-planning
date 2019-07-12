@@ -3,28 +3,49 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include "Eigen-3.3/Eigen/Core"
-#include "Eigen-3.3/Eigen/QR"
+#include "Eigen/Core"
+#include "Eigen/QR"
 #include "helpers.h"
 #include "json.hpp"
+
+#include <stdio.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#include "PathGenerator.h"
+#include "Vehicle.h"
 
 // for convenience
 using nlohmann::json;
 using std::string;
 using std::vector;
+using std::cout;
+using std::endl;
+
+void handler(int sig) {
+  void *array[10];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 10);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
 
 int main() {
+	signal(SIGSEGV, handler);   // install our handler
   uWS::Hub h;
 
   // Load up map values for waypoint's x,y,s and d normalized normal vectors
-  vector<double> map_waypoints_x;
-  vector<double> map_waypoints_y;
-  vector<double> map_waypoints_s;
-  vector<double> map_waypoints_dx;
-  vector<double> map_waypoints_dy;
+  vector<PathGenerator::landmark_s> landmarks;
 
   // Waypoint map to read from
-  string map_file_ = "../data/highway_map.csv";
+  string map_file_ = "./data/highway_map.csv";
   // The max s value before wrapping around the track back to 0
   double max_s = 6945.554;
 
@@ -43,15 +64,15 @@ int main() {
     iss >> s;
     iss >> d_x;
     iss >> d_y;
-    map_waypoints_x.push_back(x);
-    map_waypoints_y.push_back(y);
-    map_waypoints_s.push_back(s);
-    map_waypoints_dx.push_back(d_x);
-    map_waypoints_dy.push_back(d_y);
+    struct PathGenerator::landmark_s landmark = {x, y, s, d_x, d_y};
+    landmarks.push_back(landmark);
   }
+  PathGenerator pathGenerator(landmarks);
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,
-               &map_waypoints_dx,&map_waypoints_dy]
+
+  vector<Vehicle> otherCars;
+
+  h.onMessage([&pathGenerator]
               (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -69,7 +90,7 @@ int main() {
         if (event == "telemetry") {
           // j[1] is the data JSON object
           
-          // Main car's localization Data
+          // Ego car's localization Data
           double car_x = j[1]["x"];
           double car_y = j[1]["y"];
           double car_s = j[1]["s"];
@@ -86,19 +107,25 @@ int main() {
 
           // Sensor Fusion Data, a list of all other cars on the same side 
           //   of the road.
-          auto sensor_fusion = j[1]["sensor_fusion"];
+          // The data format for each car is: [ id, x, y, vx, vy, s, d].
+          // The id is a unique identifier for that car.
+          // The x, y values are in global map coordinates, and the vx, vy values are the velocity components,
+          // also in reference to the global map. Finally s and d are the Frenet coordinates for that car.
+          vector<vector<double>> sensor_fusion = j[1]["sensor_fusion"];
+
+          pathGenerator.updateOtherCars(sensor_fusion);
+          pathGenerator.updateState(previous_path_x, previous_path_y, end_path_s, end_path_d, car_x, car_y, car_s, car_d, car_yaw, car_speed);
 
           json msgJson;
 
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
-          /**
-           * TODO: define a path made up of (x,y) points that the car will visit
-           *   sequentially every .02 seconds
-           */
-
-
+          pathGenerator.get_next_vals(next_x_vals, next_y_vals);
+          cout << "First x val: "<< next_x_vals[0] << endl;
+          cout << "Second x val: "<< next_x_vals[1]<< endl;
+          cout << "First y val: "<< next_y_vals[0]<< endl;
+          cout << "Second y val: "<< next_y_vals[1]<< endl;
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 

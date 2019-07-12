@@ -5,23 +5,26 @@
 #include <string>
 #include <vector>
 
+#include "PathGenerator.h"
+
 // for convenience
 using std::string;
 using std::vector;
-
+using std::cout;
+using std::endl;
 // Checks if the SocketIO event has JSON data.
 // If there is data the JSON object in string format will be returned,
 //   else the empty string "" will be returned.
-string hasData(string s) {
-  auto found_null = s.find("null");
-  auto b1 = s.find_first_of("[");
-  auto b2 = s.find_first_of("}");
-  if (found_null != string::npos) {
-    return "";
-  } else if (b1 != string::npos && b2 != string::npos) {
-    return s.substr(b1, b2 - b1 + 2);
-  }
-  return "";
+inline string hasData(string s) {
+	auto found_null = s.find("null");
+	auto b1 = s.find_first_of("[");
+	auto b2 = s.find_first_of("}");
+	if (found_null != string::npos) {
+		return "";
+	} else if (b1 != string::npos && b2 != string::npos) {
+		return s.substr(b1, b2 - b1 + 2);
+	}
+	return "";
 }
 
 //
@@ -30,128 +33,140 @@ string hasData(string s) {
 //
 
 // For converting back and forth between radians and degrees.
-constexpr double pi() { return M_PI; }
-double deg2rad(double x) { return x * pi() / 180; }
-double rad2deg(double x) { return x * 180 / pi(); }
+constexpr double pi() {
+	return M_PI;
+}
+inline double deg2rad(double x) {
+	return x * pi() / 180;
+}
+inline double rad2deg(double x) {
+	return x * 180 / pi();
+}
 
 // Calculate distance between two points
-double distance(double x1, double y1, double x2, double y2) {
-  return sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+inline double distance(double x1, double y1, double x2, double y2) {
+	return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 }
 
 // Calculate closest waypoint to current x, y position
-int ClosestWaypoint(double x, double y, const vector<double> &maps_x, 
-                    const vector<double> &maps_y) {
-  double closestLen = 100000; //large number
-  int closestWaypoint = 0;
+inline int getClosestLandmark(double x, double y,
+		const vector<PathGenerator::landmark_s> landmarks) {
+	int no_of_landmarks = landmarks.size();
+	double closestLen = 100000; //large number
+	int closestWaypoint = 0;
 
-  for (int i = 0; i < maps_x.size(); ++i) {
-    double map_x = maps_x[i];
-    double map_y = maps_y[i];
-    double dist = distance(x,y,map_x,map_y);
-    if (dist < closestLen) {
-      closestLen = dist;
-      closestWaypoint = i;
-    }
-  }
+	for (int i = 0; i < no_of_landmarks; ++i) {
+		double map_x = landmarks[i].x;
+		double map_y = landmarks[i].y;
+		double dist = distance(x, y, map_x, map_y);
+		if (dist < closestLen) {
+			closestLen = dist;
+			closestWaypoint = i;
+		}
+	}
 
-  return closestWaypoint;
+	return closestWaypoint;
 }
 
-// Returns next waypoint of the closest waypoint
-int NextWaypoint(double x, double y, double theta, const vector<double> &maps_x, 
-                 const vector<double> &maps_y) {
-  int closestWaypoint = ClosestWaypoint(x,y,maps_x,maps_y);
+// Returns landmark the car will encounter next (so could be closest or that after closest)
+inline int getNextLandmark(double x, double y, double theta,
+		const vector<PathGenerator::landmark_s> landmarks) {
 
-  double map_x = maps_x[closestWaypoint];
-  double map_y = maps_y[closestWaypoint];
+	int no_of_landmarks = landmarks.size();
+	int closestLandmark = getClosestLandmark(x, y, landmarks);
 
-  double heading = atan2((map_y-y),(map_x-x));
+	double map_x = landmarks[closestLandmark].x;
+	double map_y = landmarks[closestLandmark].y;
 
-  double angle = fabs(theta-heading);
-  angle = std::min(2*pi() - angle, angle);
+	double heading_to_landmark = atan2((map_y - y), (map_x - x));
 
-  if (angle > pi()/2) {
-    ++closestWaypoint;
-    if (closestWaypoint == maps_x.size()) {
-      closestWaypoint = 0;
-    }
-  }
+	double angle = fabs(theta - heading_to_landmark);
+	angle = std::min(2 * pi() - angle, angle);
 
-  return closestWaypoint;
+	// Question: does this also work for very tight 180 degree curves?
+	// Here the next landmark could be more than 90 degrees to the current heading, but it is not behind...
+	bool is_landmark_behind = angle > pi() / 2;
+
+	if (is_landmark_behind) {
+		closestLandmark = (closestLandmark + 1) % no_of_landmarks;
+	}
+
+	return closestLandmark;
 }
 
 // Transform from Cartesian x,y coordinates to Frenet s,d coordinates
-vector<double> getFrenet(double x, double y, double theta, 
-                         const vector<double> &maps_x, 
-                         const vector<double> &maps_y) {
-  int next_wp = NextWaypoint(x,y, theta, maps_x,maps_y);
+inline vector<double> getFrenet(double x, double y, double theta,
+		const vector<PathGenerator::landmark_s> landmarks) {
 
-  int prev_wp;
-  prev_wp = next_wp-1;
-  if (next_wp == 0) {
-    prev_wp  = maps_x.size()-1;
-  }
+	int no_of_landmarks = landmarks.size();
+	int next_wp = getNextLandmark(x, y, theta, landmarks);
 
-  double n_x = maps_x[next_wp]-maps_x[prev_wp];
-  double n_y = maps_y[next_wp]-maps_y[prev_wp];
-  double x_x = x - maps_x[prev_wp];
-  double x_y = y - maps_y[prev_wp];
+	int prev_wp;
+	prev_wp = (next_wp - 1) % no_of_landmarks;
+//	if (next_wp == 0) {
+//		prev_wp = no_of_landmarks - 1;
+//	}
 
-  // find the projection of x onto n
-  double proj_norm = (x_x*n_x+x_y*n_y)/(n_x*n_x+n_y*n_y);
-  double proj_x = proj_norm*n_x;
-  double proj_y = proj_norm*n_y;
+	double n_x = landmarks[next_wp].x - landmarks[prev_wp].x;
+	double n_y = landmarks[next_wp].y - landmarks[prev_wp].y;
+	double x_x = x - landmarks[prev_wp].x;
+	double x_y = y - landmarks[prev_wp].y;
 
-  double frenet_d = distance(x_x,x_y,proj_x,proj_y);
+	// find the projection of x onto n
+	double proj_norm = (x_x * n_x + x_y * n_y) / (n_x * n_x + n_y * n_y);
+	double proj_x = proj_norm * n_x;
+	double proj_y = proj_norm * n_y;
 
-  //see if d value is positive or negative by comparing it to a center point
-  double center_x = 1000-maps_x[prev_wp];
-  double center_y = 2000-maps_y[prev_wp];
-  double centerToPos = distance(center_x,center_y,x_x,x_y);
-  double centerToRef = distance(center_x,center_y,proj_x,proj_y);
+	double frenet_d = distance(x_x, x_y, proj_x, proj_y);
 
-  if (centerToPos <= centerToRef) {
-    frenet_d *= -1;
-  }
+	//see if d value is positive or negative by comparing it to a center point
+	double center_x = 1000 - landmarks[prev_wp].x;
+	double center_y = 2000 - landmarks[prev_wp].y;
+	double centerToPos = distance(center_x, center_y, x_x, x_y);
+	double centerToRef = distance(center_x, center_y, proj_x, proj_y);
 
-  // calculate s value
-  double frenet_s = 0;
-  for (int i = 0; i < prev_wp; ++i) {
-    frenet_s += distance(maps_x[i],maps_y[i],maps_x[i+1],maps_y[i+1]);
-  }
+	if (centerToPos <= centerToRef) {
+		frenet_d *= -1;
+	}
 
-  frenet_s += distance(0,0,proj_x,proj_y);
+	// calculate s value
+	double frenet_s = 0;
+	for (int i = 0; i < prev_wp; ++i) {
+		frenet_s += distance(landmarks[i].x, landmarks[i].y, landmarks[i + 1].x,
+				landmarks[i + 1].y);
+	}
 
-  return {frenet_s,frenet_d};
+	frenet_s += distance(0, 0, proj_x, proj_y);
+
+	return {frenet_s,frenet_d};
 }
 
 // Transform from Frenet s,d coordinates to Cartesian x,y
-vector<double> getXY(double s, double d, const vector<double> &maps_s, 
-                     const vector<double> &maps_x, 
-                     const vector<double> &maps_y) {
-  int prev_wp = -1;
+inline vector<double> getXY(double s, double d,
+		const vector<PathGenerator::landmark_s> &landmarks) {
+	int prev_wp = -1;
 
-  while (s > maps_s[prev_wp+1] && (prev_wp < (int)(maps_s.size()-1))) {
-    ++prev_wp;
-  }
+	int no_landmarks = landmarks.size();
 
-  int wp2 = (prev_wp+1)%maps_x.size();
+	while (s > landmarks[prev_wp + 1].s && (prev_wp < (int) (no_landmarks - 1))) {
+		++prev_wp;
+	}
 
-  double heading = atan2((maps_y[wp2]-maps_y[prev_wp]),
-                         (maps_x[wp2]-maps_x[prev_wp]));
-  // the x,y,s along the segment
-  double seg_s = (s-maps_s[prev_wp]);
+	int wp2 = (prev_wp + 1) % no_landmarks;
+	double heading = atan2((landmarks[wp2].y - landmarks[prev_wp].y),
+			(landmarks[wp2].x - landmarks[prev_wp].x));
+	// the x,y,s along the segment
+	double seg_s = (s - landmarks[prev_wp].s);
 
-  double seg_x = maps_x[prev_wp]+seg_s*cos(heading);
-  double seg_y = maps_y[prev_wp]+seg_s*sin(heading);
+	double seg_x = landmarks[prev_wp].x + seg_s * cos(heading);
+	double seg_y = landmarks[prev_wp].y + seg_s * sin(heading);
 
-  double perp_heading = heading-pi()/2;
+	double perp_heading = heading - pi() / 2;
 
-  double x = seg_x + d*cos(perp_heading);
-  double y = seg_y + d*sin(perp_heading);
+	double x = seg_x + d * cos(perp_heading);
+	double y = seg_y + d * sin(perp_heading);
 
-  return {x,y};
+	return {x,y};
 }
 
 #endif  // HELPERS_H
