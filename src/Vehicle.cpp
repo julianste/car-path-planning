@@ -9,23 +9,23 @@
 
 Vehicle::Vehicle() {}
 
-Vehicle::Vehicle(int id, double x, double y, double vx, double vy, double s, double t) {
+Vehicle::Vehicle(int id, double x, double y, double vx, double vy, double s, double d) {
 	this->id = id;
 	this->x = x;
 	this->y = y;
 	this->vx = vx;
 	this->vy=vy;
 	this->s=s;
-	this->t=t;
+	this->d=d;
 }
 
-void Vehicle::updateVehicle(double x, double y, double vx, double vy, double s, double t) {
+void Vehicle::updateVehicle(double x, double y, double vx, double vy, double s, double d) {
 	this->x = x;
 	this->y = y;
 	this->vx = vx;
 	this->vy=vy;
 	this->s=s;
-	this->t=t;
+	this->d=d;
 }
 
 Vehicle::~Vehicle() {}

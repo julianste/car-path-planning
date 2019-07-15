@@ -13,16 +13,16 @@ class Vehicle {
  public:
   // Constructors
   Vehicle();
-  Vehicle(int id, double x, double y, double vx, double vy, double s, double t);
+  Vehicle(int id, double x, double y, double vx, double vy, double s, double d);
 
   // Destructor
   virtual ~Vehicle();
 
-  void updateVehicle(double x, double y, double vx, double vy, double s, double t);
+  void updateVehicle(double x, double y, double vx, double vy, double s, double d);
 
 
   int id;
-  float x,y,vx,vy,s,t;
+  float x,y,vx,vy,s,d;
 };
 
 #endif  // VEHICLE_H

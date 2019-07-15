@@ -263,22 +263,20 @@ std::vector<double> band_matrix::lu_solve(const std::vector<double>& b,
 }
 
 
-
-
 // spline implementation
 // -----------------------
-
-void spline::set_boundary(spline::bd_type left, double left_value,
-                          spline::bd_type right, double right_value,
-                          bool force_linear_extrapolation)
-{
-    assert(m_x.size()==0);          // set_points() must not have happened yet
-    m_left=left;
-    m_right=right;
-    m_left_value=left_value;
-    m_right_value=right_value;
-    m_force_linear_extrapolation=force_linear_extrapolation;
-}
+//
+//void spline::set_boundary(spline::bd_type left, double left_value,
+//                          spline::bd_type right, double right_value,
+//                          bool force_linear_extrapolation)
+//{
+//    assert(m_x.size()==0);          // set_points() must not have happened yet
+//    m_left=left;
+//    m_right=right;
+//    m_left_value=left_value;
+//    m_right_value=right_value;
+//    m_force_linear_extrapolation=force_linear_extrapolation;
+//}
 
 
 void spline::set_points(const std::vector<double>& x,

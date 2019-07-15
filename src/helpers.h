@@ -43,9 +43,13 @@ inline double rad2deg(double x) {
 	return x * 180 / pi();
 }
 
+inline double getNorm(double x, double y) {
+	return sqrt(x * x + y * y);
+}
+
 // Calculate distance between two points
 inline double distance(double x1, double y1, double x2, double y2) {
-	return sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+	return getNorm(x2 - x1, y2 - y1);
 }
 
 // Calculate closest waypoint to current x, y position
@@ -98,44 +102,55 @@ inline int getNextLandmark(double x, double y, double theta,
 inline vector<double> getFrenet(double x, double y, double theta,
 		const vector<PathGenerator::landmark_s> landmarks) {
 
-	int no_of_landmarks = landmarks.size();
 	int next_wp = getNextLandmark(x, y, theta, landmarks);
 
 	int prev_wp;
-	prev_wp = (next_wp - 1) % no_of_landmarks;
-//	if (next_wp == 0) {
-//		prev_wp = no_of_landmarks - 1;
-//	}
+	prev_wp = next_wp - 1;
+	if (next_wp == 0) {
+		prev_wp = landmarks.size() - 1;
+	}
 
-	double n_x = landmarks[next_wp].x - landmarks[prev_wp].x;
-	double n_y = landmarks[next_wp].y - landmarks[prev_wp].y;
-	double x_x = x - landmarks[prev_wp].x;
-	double x_y = y - landmarks[prev_wp].y;
+	double landmark_delta_x = landmarks[next_wp].x - landmarks[prev_wp].x;
+	double landmark_delta_y = landmarks[next_wp].y - landmarks[prev_wp].y;
+	double prev_landmark_to_x = x - landmarks[prev_wp].x;
+	double prev_landmark_to_y = y - landmarks[prev_wp].y;
 
-	// find the projection of x onto n
-	double proj_norm = (x_x * n_x + x_y * n_y) / (n_x * n_x + n_y * n_y);
-	double proj_x = proj_norm * n_x;
-	double proj_y = proj_norm * n_y;
+	// find the projection of (x,y) onto landmark_delta
+	double scalar_prod = (prev_landmark_to_x * landmark_delta_x
+			+ prev_landmark_to_y * landmark_delta_y);
+	double norm = (landmark_delta_x * landmark_delta_x
+			+ landmark_delta_y * landmark_delta_y);
 
-	double frenet_d = distance(x_x, x_y, proj_x, proj_y);
+	double proj_norm = scalar_prod / norm;
+
+	// the projection of x onto the line between the two landmarks
+	double proj_x = proj_norm * landmark_delta_x;
+	double proj_y = proj_norm * landmark_delta_y;
+
+	double frenet_d = distance(prev_landmark_to_x, prev_landmark_to_y, proj_x,
+			proj_y);
 
 	//see if d value is positive or negative by comparing it to a center point
-	double center_x = 1000 - landmarks[prev_wp].x;
-	double center_y = 2000 - landmarks[prev_wp].y;
-	double centerToPos = distance(center_x, center_y, x_x, x_y);
-	double centerToRef = distance(center_x, center_y, proj_x, proj_y);
+	double prev_landmark_to_center_x = 1000 - landmarks[prev_wp].x;
+	double prev_landmark_to_center_y = 2000 - landmarks[prev_wp].y;
+	double centerToPos = distance(prev_landmark_to_center_x,
+			prev_landmark_to_center_y, prev_landmark_to_x, prev_landmark_to_y);
+	double centerToRef = distance(prev_landmark_to_center_x,
+			prev_landmark_to_center_y, proj_x, proj_y);
 
-	if (centerToPos <= centerToRef) {
+	// I don't get this
+	if (centerToPos < centerToRef) {
+		cout << "d is negative, frenet_d * -1 = " << frenet_d * (-1) << endl;
 		frenet_d *= -1;
 	}
 
-	// calculate s value
+	// calculate s value = sum of distances between all waypoints...
 	double frenet_s = 0;
 	for (int i = 0; i < prev_wp; ++i) {
 		frenet_s += distance(landmarks[i].x, landmarks[i].y, landmarks[i + 1].x,
 				landmarks[i + 1].y);
 	}
-
+	// plus last slice
 	frenet_s += distance(0, 0, proj_x, proj_y);
 
 	return {frenet_s,frenet_d};
@@ -153,6 +168,7 @@ inline vector<double> getXY(double s, double d,
 	}
 
 	int wp2 = (prev_wp + 1) % no_landmarks;
+
 	double heading = atan2((landmarks[wp2].y - landmarks[prev_wp].y),
 			(landmarks[wp2].x - landmarks[prev_wp].x));
 	// the x,y,s along the segment
@@ -167,6 +183,35 @@ inline vector<double> getXY(double s, double d,
 	double y = seg_y + d * sin(perp_heading);
 
 	return {x,y};
+}
+
+inline void transform_origin_for_vector(vector<double> &X, vector<double> &Y,
+		double orig_x, double orig_y, double orig_yaw) {
+	// coordinate transformation
+
+	for (size_t i = 0; i < X.size(); i++) {
+		// shift car reference to (0,0) 0 degrees
+		double shifted_x = X[i] - orig_x;
+		double shifted_y = Y[i] - orig_y;
+
+		X[i] = shifted_x * cos(orig_yaw) + shifted_y * sin(orig_yaw);
+		Y[i] = -shifted_x * sin(orig_yaw) + shifted_y * cos(orig_yaw);
+
+	}
+}
+
+inline void transform_back(double &x, double &y, double orig_x,
+		double orig_y, double orig_yaw) {
+
+	// rotate back
+	double tmp = x * cos(orig_yaw) - y * sin(orig_yaw);
+	y = x * sin(orig_yaw) + y * cos(orig_yaw);
+	x = tmp;
+
+	// shift back
+	x = x + orig_x;
+	y = y + orig_y;
+
 }
 
 #endif  // HELPERS_H
