@@ -70,6 +70,10 @@ int main() {
 		struct PathGenerator::landmark_s landmark = {x, y, s, d_x, d_y};
 		landmarks.push_back(landmark);
 	}
+	if (landmarks.size() == 0) {
+		cout << "No landmarks! exiting...";
+		return -1;
+	}
 	PathGenerator pathGenerator(landmarks);
 
 	vector<Vehicle> otherCars;
